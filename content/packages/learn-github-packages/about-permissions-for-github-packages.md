@@ -77,7 +77,14 @@ For more conceptual background on {% data variables.product.prodname_actions %} 
 
 For more information about `GITHUB_TOKEN` used in {% data variables.product.prodname_actions %} workflows, see "[Authentication in a workflow](/actions/reference/authentication-in-a-workflow#using-the-github_token-in-a-workflow)."
 
-{% ifversion fpt or ghec %}
+{% ifversion fpt or 
+
+
+
+
+
+
+ %}
 ### {% data variables.product.prodname_actions %} access for container images
 
 To ensure your workflows have access to your container image, you must enable {% data variables.product.prodname_actions %} access to the repositories where your workflow is run. You can find this setting on your package's settings page. For more information, see "[Ensuring workflow access to your package](/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility#ensuring-workflow-access-to-your-package)."
