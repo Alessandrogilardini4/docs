@@ -4,7 +4,6 @@ import { useRouter } from 'next/router'
 import {
   ActionList,
   Box,
-  Header,
   IconButton,
   Link,
   Overlay,
@@ -23,9 +22,10 @@ import {
   ArrowRightIcon,
   ArrowLeftIcon,
 } from '@primer/octicons-react'
+import { focusTrap } from '@primer/behaviors'
 
-import { useTranslation } from 'src/languages/components/useTranslation'
-import { useVersion } from 'src/versions/components/useVersion'
+import { useTranslation } from '@/languages/components/useTranslation'
+import { useVersion } from '@/versions/components/useVersion'
 import {
   AI_SEARCH_CONTEXT,
   executeGeneralSearch,
@@ -42,7 +42,7 @@ import { EventType } from '@/events/types'
 import { ASK_AI_EVENT_GROUP, SEARCH_OVERLAY_EVENT_GROUP } from '@/events/components/event-groups'
 import type { AIReference } from '../types'
 import type { AutocompleteSearchHit, GeneralSearchHit } from '@/search/types'
-import { focusTrap } from '@primer/behaviors'
+import { useSharedUIContext } from '@/frame/components/context/SharedUIContext'
 
 type Props = {
   searchOverlayOpen: boolean
@@ -89,6 +89,10 @@ export function SearchOverlay({
   const [aiReferences, setAIReferences] = useState<AIReference[]>([] as AIReference[])
   const [aiCouldNotAnswer, setAICouldNotAnswer] = useState<boolean>(false)
   const [showSpinner, setShowSpinner] = useState(false)
+  const [scrollPos, setScrollPos] = useState(0)
+  const [announcement, setAnnouncement] = useState<string>('')
+
+  const { hasOpenHeaderNotifications } = useSharedUIContext()
 
   // Group all events between open / close of the overlay together
   const searchEventGroupId = useRef<string>('')
@@ -105,6 +109,19 @@ export function SearchOverlay({
   }, [searchOverlayOpen])
   // Group all events within an "Ask AI" session together
   const askAIEventGroupId = useRef<string>('')
+
+  // When there is a notification above the header, we need to adjust the top position of the overlay to account for it
+  useEffect(() => {
+    if (hasOpenHeaderNotifications) {
+      const handleScroll = () => {
+        setScrollPos(window.scrollY)
+      }
+
+      window.addEventListener('scroll', handleScroll)
+      return () => window.removeEventListener('scroll', handleScroll)
+    }
+  }, [hasOpenHeaderNotifications])
+  const overlayTopValue = scrollPos > 72 ? '0px' : `${88 - scrollPos}px !important`
 
   const {
     autoCompleteOptions,
@@ -171,6 +188,7 @@ export function SearchOverlay({
 
   // Combine options for key navigation
   const [combinedOptions, generalOptionsWithViewStatus, aiOptionsWithUserInput] = useMemo(() => {
+    setAnnouncement('')
     let generalOptionsWithViewStatus = [...generalSearchResults]
     const aiOptionsWithUserInput = [...userInputOptions, ...filteredAIOptions]
     const combinedOptions = [] as Array<{
@@ -192,6 +210,7 @@ export function SearchOverlay({
         } as unknown as GeneralSearchHit)
       }
     } else if (urlSearchInputQuery.trim() !== '' && !searchLoading) {
+      setAnnouncement(t('search.overlay.no_results_found_announcement'))
       generalOptionsWithViewStatus.push({
         title: t('search.overlay.no_results_found'),
         isNoResultsFound: true,
@@ -332,6 +351,15 @@ export function SearchOverlay({
     if (searchParams.has('search-overlay-open')) {
       searchParams.delete('search-overlay-open')
     }
+    if (searchParams.has('search-overlay-input')) {
+      searchParams.delete('search-overlay-input')
+    }
+    if (searchParams.has('search-overlay-ask-ai')) {
+      searchParams.delete('search-overlay-ask-ai')
+    }
+    if (searchParams.has('query')) {
+      searchParams.delete('query')
+    }
     router.push(`${selectedOption.url}?${searchParams.toString()}` || '')
     onClose()
   }
@@ -377,20 +405,30 @@ export function SearchOverlay({
     if (searchParams.has('search-overlay-open')) {
       searchParams.delete('search-overlay-open')
     }
+    if (searchParams.has('search-overlay-input')) {
+      searchParams.delete('search-overlay-input')
+    }
+    if (searchParams.has('search-overlay-ask-ai')) {
+      searchParams.delete('search-overlay-ask-ai')
+    }
+    if (searchParams.has('query')) {
+      searchParams.delete('query')
+    }
     window.open(`${url}?${searchParams.toString()}` || '', '_blank')
   }
 
   // Handle keyboard navigation of suggestions
   const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    let optionsLength = listElementsRef.current?.length ?? 0
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      if (combinedOptions.length > 0) {
+      if (optionsLength > 0) {
         let newIndex = 0
         // If no item is selected, select the first item
         if (selectedIndex === -1) {
           newIndex = 0
         } else {
-          newIndex = (selectedIndex + 1) % combinedOptions.length
+          newIndex = (selectedIndex + 1) % optionsLength
           // If we go "out of bounds" (i.e. the index is less than the selected index), unselect the item
           if (newIndex < selectedIndex) {
             newIndex = -1
@@ -404,17 +442,23 @@ export function SearchOverlay({
           newIndex += 1
         }
         setSelectedIndex(newIndex)
+        if (newIndex !== -1 && listElementsRef.current[newIndex]) {
+          listElementsRef.current[newIndex]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          })
+        }
       }
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
-      if (combinedOptions.length > 0) {
+      if (optionsLength > 0) {
         let newIndex = 0
         // If no item is selected, select the last item
         if (selectedIndex === -1) {
-          newIndex = combinedOptions.length - 1
+          newIndex = optionsLength - 1
         } else {
           // Otherwise, select the previous item
-          newIndex = (selectedIndex - 1 + combinedOptions.length) % combinedOptions.length
+          newIndex = (selectedIndex - 1 + optionsLength) % optionsLength
           // If we go "out of bounds" (i.e. the index is greater than the selected index), unselect the item
           if (newIndex > selectedIndex) {
             newIndex = -1
@@ -429,8 +473,17 @@ export function SearchOverlay({
           newIndex -= 1
         }
         setSelectedIndex(newIndex)
+        if (newIndex !== -1 && listElementsRef.current[newIndex]) {
+          listElementsRef.current[newIndex]?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          })
+        }
       }
     } else if (event.key === 'Enter') {
+      if (searchLoading) {
+        return
+      }
       event.preventDefault()
       let pressedGroupKey = SEARCH_OVERLAY_EVENT_GROUP
       let pressedGroupId = searchEventGroupId
@@ -438,23 +491,22 @@ export function SearchOverlay({
 
       // When enter is pressed and no option is manually selected (-1), perform an AI search with the user input
       if (selectedIndex === -1) {
-        if (isAskAIState) {
-          pressedOnContext = AI_SEARCH_CONTEXT
-          pressedGroupKey = ASK_AI_EVENT_GROUP
-          pressedGroupId = askAIEventGroupId
-        }
+        pressedOnContext = AI_SEARCH_CONTEXT
+        pressedGroupKey = ASK_AI_EVENT_GROUP
+        pressedGroupId = askAIEventGroupId
         sendKeyboardEvent(event.key, pressedOnContext, pressedGroupId, pressedGroupKey)
         aiSearchOptionOnSelect({ term: urlSearchInputQuery } as AutocompleteSearchHit)
-      }
-
-      if (
+      } else if (
         combinedOptions.length > 0 &&
         selectedIndex >= 0 &&
         selectedIndex < combinedOptions.length
       ) {
         const selectedItem = combinedOptions[selectedIndex]
+        if (!selectedItem) {
+          return
+        }
         let action = () => {} // Execute the action after we send the event
-        if (selectedItem.group === 'general') {
+        if (selectedItem?.group === 'general') {
           if (
             (selectedItem.option as GeneralSearchHitWithOptions).isViewAllResults ||
             (selectedItem.option as GeneralSearchHitWithOptions).isSearchDocsOption
@@ -465,10 +517,10 @@ export function SearchOverlay({
             pressedOnContext = 'general-option'
             action = () => generalSearchResultOnSelect(selectedItem.option as GeneralSearchHit)
           }
-        } else if (selectedItem.group === 'ai') {
+        } else if (selectedItem?.group === 'ai') {
           pressedOnContext = 'ai-option'
           action = () => aiSearchOptionOnSelect(selectedItem.option as AutocompleteSearchHit)
-        } else if (selectedItem.group === 'reference') {
+        } else if (selectedItem?.group === 'reference') {
           // On a reference select, we are in the Ask AI State / Screen
           pressedGroupKey = ASK_AI_EVENT_GROUP
           pressedGroupId = askAIEventGroupId
@@ -491,6 +543,8 @@ export function SearchOverlay({
       'search-overlay-ask-ai': '',
       'search-overlay-input': urlSearchInputQuery,
     })
+    // Focus the search input
+    inputRef.current?.focus()
   }
 
   // We render the AI Result in the searchGroups call, so we pass the props down via an object
@@ -547,29 +601,33 @@ export function SearchOverlay({
           {aiSearchError && (
             <>
               <ActionList.Divider key="error-top-divider" />
-              <ActionList.GroupHeading
-                as="h3"
-                tabIndex={-1}
-                aria-label={t('search.overlay.ai_suggestions_list_aria_label')}
-              >
-                <CopilotIcon className="mr-1" />
-                {t('search.overlay.ai_autocomplete_list_heading')}
-              </ActionList.GroupHeading>
-              <Box
-                sx={{
-                  padding: '0 16px 0 16px',
-                }}
-              >
-                <Banner
-                  tabIndex={0}
-                  className={styles.errorBanner}
-                  title={t('search.failure.ai_title')}
-                  description={t('search.failure.description')}
-                  variant="info"
-                  aria-live="assertive"
-                  role="alert"
-                />
-              </Box>
+              <li tabIndex={-1}>
+                <ActionList.GroupHeading
+                  as="h3"
+                  tabIndex={-1}
+                  aria-label={t('search.overlay.ai_suggestions_list_aria_label')}
+                >
+                  <CopilotIcon className="mr-1" />
+                  {t('search.overlay.ai_autocomplete_list_heading')}
+                </ActionList.GroupHeading>
+              </li>
+              <li>
+                <Box
+                  sx={{
+                    padding: '0 16px 0 16px',
+                  }}
+                >
+                  <Banner
+                    tabIndex={0}
+                    className={styles.errorBanner}
+                    title={t('search.failure.ai_title')}
+                    description={t('search.failure.description')}
+                    variant="info"
+                    aria-live="assertive"
+                    role="alert"
+                  />
+                </Box>
+              </li>
               <ActionList.Divider key="error-bottom-divider" />
             </>
           )}
@@ -592,6 +650,7 @@ export function SearchOverlay({
   } else {
     OverlayContents = (
       <ActionList
+        id="search-suggestions-list"
         aria-label={t('search.overlay.suggestions_list_aria_label')}
         showDividers
         className={styles.suggestionsList}
@@ -617,7 +676,6 @@ export function SearchOverlay({
     )
   }
 
-  const overlayHeadingId = 'overlay-heading'
   return (
     <>
       <div className={styles.overlayBackdrop} />
@@ -630,12 +688,20 @@ export function SearchOverlay({
         onClickOutside={onClose}
         anchorSide="inside-center"
         className={cx(styles.overlayContainer, 'position-fixed')}
+        // We need to override the top value of the overlay when there are header notifications
+        sx={
+          hasOpenHeaderNotifications
+            ? {
+                top: overlayTopValue,
+              }
+            : undefined
+        }
         role="dialog"
         aria-modal="true"
-        aria-labelledby={overlayHeadingId}
+        aria-label={t('search.overlay.aria_label')}
         ref={overlayRef}
       >
-        <Header className={styles.header}>
+        <div className={styles.header}>
           <Box
             sx={{
               display: isAskAIState ? 'flex' : 'none',
@@ -657,13 +723,14 @@ export function SearchOverlay({
             value={urlSearchInputQuery}
             onChange={handleSearchQueryChange}
             leadingVisual={<SearchIcon />}
-            aria-labelledby={overlayHeadingId}
             role="combobox"
-            aria-controls="search-suggestions-list"
+            // In AskAI the search input not longer "controls" the suggestions list, because there is no list, so we remove the aria-controls attribute
+            aria-controls={isAskAIState ? 'ask-ai-result-container' : 'search-suggestions-list'}
             aria-expanded={combinedOptions.length > 0}
+            aria-label={t('search.overlay.input_aria_label')}
             aria-activedescendant={
               selectedIndex >= 0
-                ? `search-option-${combinedOptions[selectedIndex].group}-${selectedIndex}`
+                ? `search-option-${combinedOptions[selectedIndex]?.group}-${selectedIndex}`
                 : undefined
             }
             onKeyDown={handleKeyDown}
@@ -698,7 +765,7 @@ export function SearchOverlay({
               </Stack>
             }
           />
-        </Header>
+        </div>
         <ActionList.Divider
           sx={{
             display: inErrorState ? 'none' : 'block',
@@ -713,7 +780,7 @@ export function SearchOverlay({
             width: '100%',
           }}
         />
-        <footer key="description" className={styles.footer}>
+        <div key="description" className={styles.footer}>
           <Box
             sx={{
               display: 'flex',
@@ -733,18 +800,15 @@ export function SearchOverlay({
               onClick={async () => {
                 if (await getIsStaff()) {
                   // Hubbers users use an internal discussion for feedback
-                  window.open(
-                    'https://github.com/github/docs-engineering/discussions/5295',
-                    '_blank',
-                  )
+                  window.open('https://github.com/github/docs-team/discussions/5172', '_blank')
                 } else {
-                  // TODO: On ship date set this value
-                  // window.open('TODO', '_blank')
+                  // public discussion for feedback
+                  window.open('https://github.com/orgs/community/discussions/158488', '_blank')
                 }
               }}
               as="button"
             >
-              {t('search.overlay.give_feedback')}
+              <u>{t('search.overlay.give_feedback')}</u>
             </Link>
           </Box>
           <Text
@@ -758,7 +822,23 @@ export function SearchOverlay({
             }}
             dangerouslySetInnerHTML={{ __html: t('search.overlay.privacy_disclaimer') }}
           />
-        </footer>
+        </div>
+        <div
+          aria-live="assertive"
+          style={{
+            position: 'absolute',
+            width: '1px',
+            height: '1px',
+            padding: '0',
+            margin: '-1px',
+            overflow: 'hidden',
+            clip: 'rect(0, 0, 0, 0)',
+            whiteSpace: 'nowrap',
+            border: '0',
+          }}
+        >
+          {announcement}
+        </div>
       </Overlay>
     </>
   )
@@ -804,37 +884,27 @@ function renderSearchGroups(
 ) {
   const groups = []
 
-  const askAIGroupHeading = (
-    <ActionList.GroupHeading
-      key="ai-heading"
-      as="h3"
-      tabIndex={-1}
-      aria-label={t('search.overlay.ai_suggestions_list_aria_label')}
-    >
-      <CopilotIcon className="mr-1" />
-      {t('search.overlay.ai_autocomplete_list_heading')}
-    </ActionList.GroupHeading>
-  )
-
   let isInAskAIState = askAIState?.isAskAIState && !askAIState.aiSearchError
   if (isInAskAIState) {
     groups.push(
       <ActionList.Group key="ai" data-testid="ask-ai">
-        {askAIGroupHeading}
-        <AskAIResults
-          query={askAIState.aiQuery}
-          debug={askAIState.debug}
-          version={askAIState.currentVersion}
-          setAISearchError={askAIState.setAISearchError}
-          references={askAIState.references}
-          setReferences={askAIState.setReferences}
-          referencesIndexOffset={askAIState.referencesIndexOffset}
-          referenceOnSelect={askAIState.referenceOnSelect}
-          selectedIndex={selectedIndex}
-          askAIEventGroupId={askAIState.askAIEventGroupId}
-          aiCouldNotAnswer={askAIState.aiCouldNotAnswer}
-          setAICouldNotAnswer={askAIState.setAICouldNotAnswer}
-        />
+        <li tabIndex={-1}>
+          <AskAIResults
+            query={askAIState.aiQuery}
+            debug={askAIState.debug}
+            version={askAIState.currentVersion}
+            setAISearchError={askAIState.setAISearchError}
+            references={askAIState.references}
+            setReferences={askAIState.setReferences}
+            referencesIndexOffset={askAIState.referencesIndexOffset}
+            referenceOnSelect={askAIState.referenceOnSelect}
+            selectedIndex={selectedIndex}
+            askAIEventGroupId={askAIState.askAIEventGroupId}
+            aiCouldNotAnswer={askAIState.aiCouldNotAnswer}
+            setAICouldNotAnswer={askAIState.setAICouldNotAnswer}
+            listElementsRef={listElementsRef}
+          />
+        </li>
       </ActionList.Group>,
     )
   }
@@ -872,7 +942,6 @@ function renderSearchGroups(
           <ActionList.Item
             key={`general-${index}`}
             id={`search-option-general-${index}`}
-            role="option"
             className={styles.noResultsFound}
             tabIndex={-1}
             aria-label={t('search.overlay.no_results_found')}
@@ -890,7 +959,6 @@ function renderSearchGroups(
           <ActionList.Item
             key={`general-${index}`}
             id={`search-option-general-${index}`}
-            role="option"
             tabIndex={-1}
             active={isActive}
             onSelect={() => performGeneralSearch()}
@@ -923,7 +991,6 @@ function renderSearchGroups(
           <ActionList.Item
             key={`general-${index}`}
             id={`search-option-general-${index}`}
-            role="option"
             aria-describedby="search-suggestions-list"
             onSelect={() =>
               option.isViewAllResults ? performGeneralSearch() : generalSearchResultOnSelect(option)
@@ -960,7 +1027,7 @@ function renderSearchGroups(
 
     groups.push(
       <ActionList.Group key="general" data-testid="general-autocomplete-suggestions">
-        <ActionList.GroupHeading as="h3" tabIndex={-1} id="search-suggestions-list">
+        <ActionList.GroupHeading as="h3" tabIndex={-1}>
           {t('search.overlay.general_suggestions_list_heading')}
         </ActionList.GroupHeading>
         {items}
@@ -999,7 +1066,6 @@ function renderSearchGroups(
             <ActionList.Item
               key={`ai-${indexWithOffset}`}
               id={`search-option-ai-${indexWithOffset}`}
-              role="option"
               aria-describedby="copilot-suggestions"
               onSelect={() => aiAutocompleteOnSelect(option)}
               active={isActive}

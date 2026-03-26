@@ -181,7 +181,7 @@ You can view a list of all dormant users {% ifversion ghes %} who have not been 
 {% data reusables.enterprise-accounts.access-enterprise %}
 1. Under "Organizations", in the search bar, begin typing the organization's name until it appears in the search results.
 1. Select the name of the organization.
-1. Above the organization name, select **{% octicon "person" aria-hidden="true" %} People**.
+1. Above the organization name, select **{% octicon "person" aria-hidden="true" aria-label="person" %} People**.
 
    ![Screenshot of the tabs above an organization name. The "People" tab is highlighted with an orange outline.](/assets/images/help/enterprises/emu-organization-people-tab.png)
 1. Above the list of members, select **Type**, then select the type of members you want to view.
@@ -198,9 +198,18 @@ If you use SAML authentication and SCIM provisioning, you can filter members bas
 1. Select **Account Type**, then choose from the following options.
 
    * **Built-in:** Users with local accounts on {% data variables.location.product_location %} who authenticate with a username and password.
+{% ifversion scim-for-ghes-ga %}
+   * **SAML JIT provisioned:** Users who authenticate with SAML via an identity provider and were created through just-in-time (JIT) provisioning when they first signed in. These users are not linked to SCIM identities.
+   * **SCIM provisioned:** Users who were created and managed through SCIM provisioning from your identity provider. These users are linked to SCIM identities.
+{% else %}
    * **SAML linked:** Users who authenticate with SAML via an identity provider, but were not provisioned by SCIM.
    * **SAML and SCIM linked:** Users who authenticate with SAML via an identity provider, and were provisioned by SCIM.
+{% endif %}
 
+{% endif %}
+
+{% ifversion scim-for-ghes-ga %}
+{% data reusables.scim.ghe-scim-identities-csv %}
 {% endif %}
 
 ## Viewing members without an email address from a verified domain
@@ -210,11 +219,11 @@ You can view a list of members in your enterprise who don't have an email addres
 {% data reusables.enterprise-accounts.access-enterprise %}
 {% data reusables.enterprise-accounts.settings-tab %}
 {% data reusables.enterprise-accounts.verified-domains-tab %}
-1. Under "Notification preferences", select the **{% octicon "eye" aria-hidden="true" %} View enterprise members without an approved or verified domain email** link.
+1. Under "Notification preferences", select the **{% octicon "eye" aria-hidden="true" aria-label="eye" %} View enterprise members without an approved or verified domain email** link.
 
 ## Viewing whether members in your enterprise have 2FA enabled
 
-{% ifversion fpt or ghec %}
+{% ifversion ghec %}
 
 You can see which people in your enterprise have enabled two-factor authentication.
 
